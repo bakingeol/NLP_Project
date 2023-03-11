@@ -16,8 +16,7 @@ from transformers import (
     BertForSequenceClassification,
     BertTokenizer,
     AutoConfig,
-    AdamW
-)
+    AdamW)
 
 import pickle
 import argparse
