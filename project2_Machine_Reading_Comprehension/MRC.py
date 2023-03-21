@@ -1,5 +1,3 @@
-
-#%%
 from typing import List, Tuple, Dict, Any
 import json
 import random
@@ -54,32 +52,8 @@ class KoMRC:
 
     def __len__(self) -> int:
         return len(self._indices)
-#%%
-dataset = KoMRC.load('/home/administrator/ingeol/NLP_Project/project2_Machine_Reading_Comprehension/train.json')
-
-tra_dataset, de_dataset = KoMRC.split(dataset)
-
-#
-from transformers import (LongformerModel, 
-                          LongformerConfig, 
-                          LongformerPreTrainedModel,
-                          LongformerForQuestionAnswering,
-                          LongformerTokenizer,
-                          LongformerTokenizerFast)
-import torch
-#%%
-tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-base-4096')
-config = LongformerConfig()
-model = LongformerForQuestionAnswering.from_pretrained("allenai/longformer-large-4096")
-
-model.config.return_dict = False
-optimizer = torch.optim.AdamW(model.parameters(), lr = 5e-5)
-loss_fn = torch.nn.CrossEntropyLoss()
-#%%
-tokenizer
-#%%
-# 데이터셋 전처리 함수
-def preprocess(dataset):
+    
+def preprocess(tokenizer,dataset):
     examples = []
     for data in dataset:
         context = data['context']
@@ -133,64 +107,3 @@ def preprocess(dataset):
                                  attention_mask, 'start_positions': start_position, 'end_positions': end_position})
 
     return examples
-#%%
-train_dataset = preprocess(tra_dataset)
-eval_dataset = preprocess(de_dataset)
-#%%
-device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-#%%
-from tqdm import tqdm
-import os
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-import torch
-torch.autograd.set_detect_anomaly(True)
-#%%
-# input_ids = torch.LongTensor(train_dataset[198]['input_ids']).to(device)
-# attention_mask = torch.LongTensor(train_dataset[198]['attention_mask']).to(device)
-# input_ids = input_ids.unsqueeze(0)
-# attention_mask = attention_mask.unsqueeze(0)
-# #%%
-# model.to(device)
-# model(input_ids, attention_mask = attention_mask)
-#%%
-model.to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
-try:
-    for epoch in range(30):
-        print('epoch:',epoch)
-        for i in tqdm(range(len(train_dataset))):
-
-            optimizer.zero_grad()
-
-            input_ids = torch.LongTensor(train_dataset[i]['input_ids']).to(device)
-            attention_mask = torch.LongTensor(train_dataset[i]['attention_mask']).to(device)
-            
-            # trian_dataset[i]['']
-            input_ids = input_ids.unsqueeze(0)
-            attention_mask = attention_mask.unsqueeze(0)
-            # i = i.unsqueeze(0)
-            # a = a.unsqueeze(0)
-            
-            output = model(input_ids, attention_mask = attention_mask)
-
-            start_logits= output[0]
-            end_logits = output[1]
-            start_pos = torch.LongTensor([train_dataset[i]['start_positions']]).to(device)
-            end_pos = torch.LongTensor([train_dataset[i]['end_positions']]).to(device)
-            
-            # print(start_logits, type(start_logits), len(start_logits))
-            # print('-'*50)
-            # print(start_pos, type(start_pos), len(start_pos))
-
-            start_loss = loss_fn(start_logits, start_pos)
-            end_loss = loss_fn(end_logits, end_pos)
-            
-            loss = start_loss + end_loss
-
-            print('loss:',loss)
-
-            loss.backward()
-            optimizer.step()
-except RuntimeError:
-   
-    import pdb; pdb.set_trace()
