@@ -1,3 +1,4 @@
+#%%
 from typing import List, Tuple, Dict, Any
 import json
 import random
@@ -53,57 +54,40 @@ class KoMRC:
     def __len__(self) -> int:
         return len(self._indices)
     
-def preprocess(tokenizer,dataset):
-    examples = []
+def preprocess(tokenizer, dataset):
+    example=[]
+    loc_start, loc_end = 0,0
     for data in dataset:
-        context = data['context']
-        question = data['question']
-        answer_text = data['answers'][0]['text']
-        start_position = data['answers'][0]['answer_start']
 
+        context = data['context'] # str
+        question = data['question'] # str
+        answer_text = data['answers'][0]['text'] # str
+        start_position = data['answers'][0]['answer_start'] # int
+
+        end_position = start_position + len(answer_text) # int # 돌려보고 만약 answer_text의 길이가 초과화는경우 if 문 코드 추가
+
+        # start_position_encoded = tokenizer.encode_plus(answer_text, context, return_offsets_mapping=True, 
+        #                                            add_special_tokens=False)['offset_mapping'][0][0]
+        # end_position_encoded = start_position_encoded + len(answer_text)
         inputs = tokenizer(question, context, padding='max_length', 
-                           truncation=True, max_length=4096, 
-                           return_overflowing_tokens=True, return_offsets_mapping=True)
+                            truncation=True, max_length=1024, 
+                            return_overflowing_tokens=True, return_offsets_mapping=True)
         
-        if len(inputs['input_ids'][0]) <= 4096:  # 수정된 부분
-            input_ids = inputs['input_ids'][0]  # 수정된 부분
-            attention_mask = inputs['attention_mask'][0]  # 수정된 부분
-            start_position_encoded = tokenizer.encode_plus(answer_text, context, return_offsets_mapping=True, 
-                                                           add_special_tokens=False)['offset_mapping'][0][0]
-            end_position_encoded = start_position_encoded + len(answer_text)
+        input_ids = inputs['input_ids']
+        attention_mask = inputs['attention_mask']
 
-            # start/end position이 4096을 넘어가는 경우 처리
-            if start_position_encoded >= 4096:
-                start_position_encoded = 4096
-                end_position_encoded = 4096
-            elif end_position_encoded >= 4096:
-                end_position_encoded = 4096
+        
+        for i,v in enumerate(inputs['offset_mapping'][0]):
+            if v[0] == start_position:
+                loc_start = i
+            if v[1] == end_position:
+                loc_end = i
+        token_type_ids = [0] * (len(question) + 1) + [1] * (len(context) + 2)
+        
+        example.append({'input_ids': input_ids, 'attention_mask': attention_mask, 'token_type_ids' : token_type_ids,
+                        'start_positions': loc_start, 'end_positions': loc_end, 'answer': answer_text, 'context': context, 'question': question})
 
-            start_position += len(tokenizer.tokenize(context[:start_position])[1:-1])
-            end_position = start_position + len(tokenizer.tokenize(answer_text)[1:-1])
-            examples.append({'input_ids': input_ids, 'attention_mask': attention_mask, 
-                             'start_positions': start_position, 'end_positions': end_position})
-        else:
-            # overflow 데이터 처리
-            for i, (input_ids, attention_mask) in enumerate(zip(inputs['input_ids'], inputs['attention_mask'])):
-                if i == 0:
-                    continue
-                start_position_encoded = tokenizer.encode_plus(answer_text, context, 
-                                                               return_offsets_mapping=True, 
-                                                               add_special_tokens=False)['offset_mapping'][0][0]
-                end_position_encoded = start_position_encoded + len(answer_text)
+    return example   # 2차원 2차원, int, int, str
 
-                # start/end position이 4096을 넘어가는 경우 처리
-                if start_position_encoded >= 4096:
-                    start_position_encoded = 4096
-                    end_position_encoded = 4096
-                elif end_position_encoded >= 4096:
-                    end_position_encoded = 4096
 
-                start_position = inputs['offset_mapping'][i][start_position_encoded][0]
-                end_position = inputs['offset_mapping'][i][end_position_encoded-1][1]
-
-                examples.append({'input_ids': input_ids, 'attention_mask': 
-                                 attention_mask, 'start_positions': start_position, 'end_positions': end_position})
-
-    return examples
+# %%
