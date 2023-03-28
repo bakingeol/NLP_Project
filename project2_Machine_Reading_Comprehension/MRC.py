@@ -3,7 +3,7 @@ from typing import List, Tuple, Dict, Any
 import json
 import random
 
-class KoMRC:
+class KoMRCT:
     def __init__(self, data, indices: List[Tuple[int, int, int]]):
         self._data = data
         self._indices = indices
@@ -82,10 +82,49 @@ def preprocess(tokenizer, dataset):
                 loc_start = i
             if v[1] == end_position:
                 loc_end = i
-        token_type_ids = [0] * (len(question) + 1) + [1] * (len(context) + 2)
-        
+        token_type_ids = inputs['token_type_ids']
+        #if (len(question) + 1) +(len(context) + 2):
+            
         example.append({'input_ids': input_ids, 'attention_mask': attention_mask, 'token_type_ids' : token_type_ids,
-                        'start_positions': loc_start, 'end_positions': loc_end, 'answer': answer_text, 'context': context, 'question': question})
+                        'start_positions': loc_start, 'end_positions': loc_end, 'answer': answer_text, 'context': context, 'question': question, 'offset_mapping':inputs['offset_mapping']})
+
+    return example   # 2차원 2차원, int, int, str
+
+
+# %%
+def preprocess_for_test(tokenizer, dataset):
+    example=[]
+    # loc_start, loc_end = 0,0
+    for data in dataset:
+
+        context = data['context'] # str
+        question = data['question'] # str
+        #answer_text = data['answers'][0]['text'] # str
+        #start_position = data['answers'][0]['answer_start'] # int
+
+        #end_position = start_position + len(answer_text) # int # 돌려보고 만약 answer_text의 길이가 초과화는경우 if 문 코드 추가
+
+        # start_position_encoded = tokenizer.encode_plus(answer_text, context, return_offsets_mapping=True, 
+        #                                            add_special_tokens=False)['offset_mapping'][0][0]
+        # end_position_encoded = start_position_encoded + len(answer_text)
+        inputs = tokenizer(question, context, padding='max_length', 
+                            truncation=True, max_length=1024, 
+                            return_overflowing_tokens=True, return_offsets_mapping=True)
+        
+        input_ids = inputs['input_ids']
+        attention_mask = inputs['attention_mask']
+
+        
+        # for i,v in enumerate(inputs['offset_mapping'][0]):
+        #     if v[0] == start_position:
+        #         loc_start = i
+        #     if v[1] == end_position:
+        #         loc_end = i
+        token_type_ids = inputs['token_type_ids']
+        #if (len(question) + 1) +(len(context) + 2):
+            
+        example.append({'input_ids': input_ids, 'attention_mask': attention_mask, 'token_type_ids' : token_type_ids,
+                        'context': context, 'offset_mapping':inputs['offset_mapping'], 'guid':data['guid']})
 
     return example   # 2차원 2차원, int, int, str
 
