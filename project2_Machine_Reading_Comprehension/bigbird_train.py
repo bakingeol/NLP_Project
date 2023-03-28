@@ -1,3 +1,4 @@
+#%%
 import torch
 from tqdm import tqdm
 import Levenshtein
@@ -9,12 +10,16 @@ def training(model, tokenizer,loss_fn, train_dataset, dev_dataset, optimizer, ep
     wandb_step = 0
 
     #print('epoch:',epoch)
-
+    accumulation_steps = 16
     leven_batch = []
     leven_loss = [] # 16개씩 평균낸 값
     loss_append = []
+    loss_dev_append = []
     loss_batch = []
-    for epoch in range(0,3):
+    total_batch = len(train_dataset)
+    for epoch in range(0,epoch):
+        avg_cost = 0
+        avg_dev_cost =0
         for i in tqdm(range(len(train_dataset))):
 
             optimizer.zero_grad()
@@ -29,7 +34,7 @@ def training(model, tokenizer,loss_fn, train_dataset, dev_dataset, optimizer, ep
             if len(start_logits)>1: # 문장이 짤리는 경우 
                 start_logits = start_logits[0].unsqueeze(0)
                 end_logits = end_logits[0].unsqueeze(0)
-                print('문장이 길어서 짤린 부분')
+                print('문장이 길어서 짤린 부분')
 
             start_pos = torch.LongTensor([train_dataset[i]['start_positions']]).to(device)
             end_pos = torch.LongTensor([train_dataset[i]['end_positions']]).to(device)
@@ -38,37 +43,40 @@ def training(model, tokenizer,loss_fn, train_dataset, dev_dataset, optimizer, ep
             end_loss = loss_fn(end_logits, end_pos)       # 끝점에서 예측갑과 실측값의 crossenthropy 
             loss = start_loss + end_loss
 
+            # gradient accumulation, batch_size = 16
+            loss = loss / accumulation_steps
+            loss.backward()
+            if (i+1) % accumulation_steps == 0:
+                optimizer.step()
+                model.zero_grad()
+                print("batch_loss :",loss)
+                avg_cost += loss / total_batch
+            
             answer_start_index = output.start_logits.argmax(dim=1) # - 예측값 시작 위치
             answer_end_index = output.end_logits.argmax(dim=1) # - 예측값 끝점 위치
-
-            loss.backward()
-            optimizer.step()    
 
             #leven거리 구하기
             answer = train_dataset[i]['answer'] # - 정답값
             predict_answer = tokenizer.decode(train_dataset[i]['input_ids'][0][answer_start_index.tolist()[0]:answer_end_index.tolist()[0]+1]) # - 예측 값
-            print('정답 값 : ',answer,'예측 값 : ', predict_answer)
             
             if abs(len(answer)-len(predict_answer)) >5 :
                 predict_answer = ''
-            
+
             LD = Levenshtein.distance(predict_answer, answer)
-            
             leven_batch.append(LD)
             if len(leven_batch) == 16:
                 leven_loss.append(sum(leven_batch)/len(leven_batch))
                 leven_batch = []
                 print('Levenshtein.distance : ',leven_loss[-1])
             #if len(loss) ==16:
-            
-            loss_append.append(loss.tolist())
-            
-            if len(loss_append)>16 :
-                loss_batch.append(sum(loss_append)/len(loss_append))
-                loss_append = []
-                print(loss_batch)
-        # Evaluation
+
+        loss_append.append(avg_cost)
         
+        print('*'*100,'\n','avg_cost :',avg_cost,'\n','*'*100)
+        
+
+        # Evaluation
+        dev_batch= len(dev_dataset)
         for i in tqdm(range(len(dev_dataset))):
 
             with torch.no_grad():
@@ -85,19 +93,13 @@ def training(model, tokenizer,loss_fn, train_dataset, dev_dataset, optimizer, ep
             start_loss = loss_fn(start_logits, start_pos) # 시작점에서 예측갑과 실측값의 crossenthropy 
             end_loss = loss_fn(end_logits, end_pos)       # 끝점에서 예측갑과 실측값의 crossenthropy 
             loss = start_loss + end_loss
-            print('val_loss : ',loss)
 
-            # answer_start_index = output.start_logits.argmax(dim=1) # - 예측값
-            # answer_end_index = output.end_logits.argmax(dim=1) # - 예측값
+            if (i+1) % accumulation_steps == 0:
+                print("batch_loss :",loss)
+                avg_dev_cost += loss / dev_batch 
 
-            # answer = dev_dataset[i]['answer'] # - 정답값
-            # predict_answer = tokenizer.decode(dev_dataset[i]['input_ids'][0][answer_start_index.tolist()[0]:answer_end_index.tolist()[0]+1]) # - 예측 값
-            # print('정답 값 : ',answer,'예측 값 : ', predict_answer)
-            # if len(predict_answer) > 30:
-            #     predict_answer = ''
-            
-            # LD = Levenshtein.distance(predict_answer, answer)
-            # print('Levenshtein.distance : ',LD)
+            print('*'*100,'\n','avg_cost :',avg_dev_cost,'\n','*'*100) # tab down
+        loss_dev_append.append(avg_dev_cost)
 
         model.save_pretrained(f'/content/drive/MyDrive/Colab Notebooks/groom/project2/dump/model.{epoch}')
         # # except RuntimeError:
